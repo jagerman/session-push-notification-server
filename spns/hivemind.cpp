@@ -524,6 +524,7 @@ extern "C" inline void message_buffer_destroy(void*, void* hint) {
 std::mutex debug_mut;
 std::unordered_map<std::string, int> debug_notif_count;
 std::vector<std::pair<std::chrono::steady_clock::time_point, std::string>> debug_cafe36_msgs;
+std::vector<std::pair<std::chrono::steady_clock::time_point, std::string>> debug_cafe14_msgs;
 const auto DEBUG_STARTUP = std::chrono::steady_clock::now();
 
 void HiveMind::on_message_notification(oxenmq::Message& m) {
@@ -541,6 +542,8 @@ void HiveMind::on_message_notification(oxenmq::Message& m) {
         debug_notif_count[m.conn.pubkey()]++;
         if (m.conn.pubkey().starts_with("\x6a\x48\xd9"sv))
             debug_cafe36_msgs.emplace_back(now, m.data[0]);
+        if (m.conn.pubkey().starts_with("\x9d\xc8\x72"sv))
+            debug_cafe14_msgs.emplace_back(now, m.data[0]);
     }
 
     // Put the message into a new string, and then transfer ownership to the notification processer
@@ -921,18 +924,24 @@ void HiveMind::log_stats(std::string_view pre_cmd) {
     }
     std::string debug_junk;
     std::string cafe36_junk;
+    std::string cafe14_junk;
     {
         std::lock_guard lock{debug_mut};
         for (const auto& [pk, count] : debug_notif_count)
             fmt::format_to(std::back_inserter(debug_junk), "{},{}\n", oxenc::to_hex(pk), count);
         for (const auto& [when, data] : debug_cafe36_msgs)
             fmt::format_to(std::back_inserter(cafe36_junk), "{:.3f},{}\n", when.time_since_epoch().count() / 1e9, oxenc::to_hex(data));
+        for (const auto& [when, data] : debug_cafe14_msgs)
+            fmt::format_to(std::back_inserter(cafe14_junk), "{:.3f},{}\n", when.time_since_epoch().count() / 1e9, oxenc::to_hex(data));
         debug_cafe36_msgs.clear();
+        debug_cafe14_msgs.clear();
     }
     std::ofstream f{"/tmp/spns-counts.txt", std::ios::out | std::ios::trunc};
     f << debug_junk;
     std::ofstream g{"/tmp/spns-cafe36.txt", std::ios::out | std::ios::app};
     g << cafe36_junk;
+    std::ofstream h{"/tmp/spns-cafe14.txt", std::ios::out | std::ios::app};
+    h << cafe14_junk;
 }
 
 void HiveMind::on_drop_registrations(oxenmq::Message& m) {
