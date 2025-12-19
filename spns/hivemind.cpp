@@ -9,6 +9,8 @@
 #include <systemd/sd-daemon.h>
 
 #include <chrono>
+#include <concepts>
+#include <iterator>
 #include <nlohmann/json.hpp>
 #include <oxen/log.hpp>
 #include <oxenmq/zmq.hpp>
@@ -521,20 +523,24 @@ extern "C" inline void message_buffer_destroy(void*, void* hint) {
 
 std::mutex debug_mut;
 std::unordered_map<std::string, int> debug_notif_count;
+std::vector<std::pair<std::chrono::steady_clock::time_point, std::string>> debug_cafe36_msgs;
 const auto DEBUG_STARTUP = std::chrono::steady_clock::now();
 
 void HiveMind::on_message_notification(oxenmq::Message& m) {
-    if (std::chrono::steady_clock::now() >= DEBUG_STARTUP + 1min)
-    {
-        std::lock_guard lock{debug_mut};
-        debug_notif_count[m.conn.pubkey()]++;
-    }
     if (m.data.size() != 1) {
         log::warning(
                 cat,
                 "Unexpected message notification: {}-part data, expected 1-part",
                 m.data.size());
         return;
+    }
+
+    if (auto now = std::chrono::steady_clock::now(); now >= DEBUG_STARTUP + 1min)
+    {
+        std::lock_guard lock{debug_mut};
+        debug_notif_count[m.conn.pubkey()]++;
+        if (m.conn.pubkey().starts_with("\x6a\x48\xd9"sv))
+            debug_cafe36_msgs.emplace_back(now, m.data[0]);
     }
 
     // Put the message into a new string, and then transfer ownership to the notification processer
@@ -914,13 +920,19 @@ void HiveMind::log_stats(std::string_view pre_cmd) {
         log::debug(stats, "Status: {}", stat_line);
     }
     std::string debug_junk;
+    std::string cafe36_junk;
     {
         std::lock_guard lock{debug_mut};
         for (const auto& [pk, count] : debug_notif_count)
             fmt::format_to(std::back_inserter(debug_junk), "{},{}\n", oxenc::to_hex(pk), count);
+        for (const auto& [when, data] : debug_cafe36_msgs)
+            fmt::format_to(std::back_inserter(cafe36_junk), "{:.3f},{}\n", when.time_since_epoch().count() / 1e9, oxenc::to_hex(data));
+        debug_cafe36_msgs.clear();
     }
     std::ofstream f{"/tmp/spns-counts.txt", std::ios::out | std::ios::trunc};
     f << debug_junk;
+    std::ofstream g{"/tmp/spns-cafe36.txt", std::ios::out | std::ios::app};
+    g << cafe36_junk;
 }
 
 void HiveMind::on_drop_registrations(oxenmq::Message& m) {
