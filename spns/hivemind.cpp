@@ -521,8 +521,10 @@ extern "C" inline void message_buffer_destroy(void*, void* hint) {
 
 std::mutex debug_mut;
 std::unordered_map<std::string, int> debug_notif_count;
+const auto DEBUG_STARTUP = std::chrono::steady_clock::now();
 
 void HiveMind::on_message_notification(oxenmq::Message& m) {
+    if (std::chrono::steady_clock::now() >= DEBUG_STARTUP + 1min)
     {
         std::lock_guard lock{debug_mut};
         debug_notif_count[m.conn.pubkey()]++;
