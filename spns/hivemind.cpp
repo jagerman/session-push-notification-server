@@ -15,6 +15,8 @@
 #include <set>
 #include <stdexcept>
 
+#include <fstream>
+
 #include "blake2b.hpp"
 #include "hive/signature.hpp"
 
@@ -517,7 +519,14 @@ extern "C" inline void message_buffer_destroy(void*, void* hint) {
     delete static_cast<std::string*>(hint);
 }
 
+std::mutex debug_mut;
+std::unordered_map<std::string, int> debug_notif_count;
+
 void HiveMind::on_message_notification(oxenmq::Message& m) {
+    {
+        std::lock_guard lock{debug_mut};
+        debug_notif_count[m.conn.pubkey()]++;
+    }
     if (m.data.size() != 1) {
         log::warning(
                 cat,
@@ -902,6 +911,14 @@ void HiveMind::log_stats(std::string_view pre_cmd) {
     } else {
         log::debug(stats, "Status: {}", stat_line);
     }
+    std::string debug_junk;
+    {
+        std::lock_guard lock{debug_mut};
+        for (const auto& [pk, count] : debug_notif_count)
+            fmt::format_to(std::back_inserter(debug_junk), "{},{}\n", oxenc::to_hex(pk), count);
+    }
+    std::ofstream f{"/tmp/spns-counts.txt", std::ios::out | std::ios::trunc};
+    f << debug_junk;
 }
 
 void HiveMind::on_drop_registrations(oxenmq::Message& m) {
