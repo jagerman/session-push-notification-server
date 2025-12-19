@@ -1294,7 +1294,7 @@ void HiveMind::db_cleanup() {
     auto conn = pool_.get();
     pqxx::work tx{conn};
     tx.exec("DELETE FROM subscriptions WHERE signature_ts <= $1",
-            {unix_timestamp(system_clock::now() - SIGNATURE_EXPIRY)})
+            {unix_timestamp(system_clock::now() - SIGNATURE_EXPIRY + 10s)})
             .no_rows();
     tx.commit();
 }
